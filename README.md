@@ -1,7 +1,7 @@
 # St4RTrack: Simultaneous 4D Reconstruction and Tracking in the World (ICCV 2025)
 
 <p align="center"> 
-  <img width="1345" height="545" alt="image" src="https://github.com/user-attachments/assets/0a95ae67-2a90-43eb-93de-4de815e99f49" />
+  <img alt="image" src="assets/teaser.png" />
 </p>
 
 
@@ -25,8 +25,8 @@ Please refer to the [arXiv paper](https://arxiv.org/abs/2504.13152) for more tec
 - [x] Release pre-trained model weights: [Hugging Face](https://huggingface.co/yupengchengg147/St4rTrack) and [Google Drive](https://drive.google.com/drive/folders/1uSfnZbzqa8pfIb6k383-BerLQ0m9-R1l?usp=sharing)
 - [x] More unit tests  
 - [x] Add dataset/benchmark download and preprocess instructions
-- [ ] Add pre-trained models download scripts  
-- [ ] Check requirements.txt
+- [x] Add pre-trained models download scripts  
+- [x] Check requirements.txt
 
 ## Getting Started
 
