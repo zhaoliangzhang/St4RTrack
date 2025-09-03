@@ -2,8 +2,6 @@
 
 # This script is used to evaluate the model on the StaRTrack's benchmark, replace the checkpoint path, output directory and conda environment accordingly.
 
-# This script is used to evaluate the model on the StaRTrack's benchmark, replace the checkpoint path, output directory and conda environment accordingly.
-
 your_ckpt_path="/path/to/your/ckpt"
 
 ckpt_names=(

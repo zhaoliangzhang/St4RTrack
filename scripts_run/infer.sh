@@ -38,7 +38,6 @@ for ((i=0; i<${#checkpoints[@]}; i++)); do
             --weights "$checkpoint" \
             --output_dir "$output_dir/${test_name}_${ckpt_name}_${start_frame}" \
             --start_frame "$start_frame"
-
     done
 done
 

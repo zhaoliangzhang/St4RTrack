@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# This script is used to train the model with tta, replace the dataset path.
+# This script is used to train the model with TTA(test time adaptation), replace the dataset path.
 
 # Set data path
 your_data_path="/path/to/your/data"

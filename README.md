@@ -68,7 +68,7 @@ Optionally, you can also load checkpoint via [Hugging Face](https://huggingface.
 ```python
 --hf_model "yupengchengg147/St4RTrack" \
 --hf_variant seq \
---hf_force_download 
+--hf_force_download #optional
 ```
 in training and inference command.
 
@@ -93,18 +93,24 @@ wget https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge
 #### Pair Mode Training
 Train with pair-wise image reconstruction and dynamic pixel reweighting:
 ```bash
+# Remember to replace the dataset path to your own path
+# the script has been tested on a 4xA100(80G) machine
 bash scripts_run/train_pair_reweight.sh
 ```
 
 #### Sequence Mode Training
 Train with sequence-based tracking:
 ```bash
+# Remember to replace the dataset path to your own path
+# the script has been tested on a 4xA100(80G) machine
 bash scripts_run/train_seq_reweight.sh
 ```
 
 #### Test-Time Adaptation
 Fine-tune on specific sequences:
 ```bash
+# Remember to replace the dataset path and checkpoint path to your own path
+# the script has been tested on a 4xA100(80G) machine
 bash scripts_run/train_tta.sh
 ```
 
@@ -231,6 +237,6 @@ Dynamic Point Maps - https://www.robots.ox.ac.uk/~vgg/research/dynamic-point-map
 
 ## Acknowledgements
 
-We would like to thank the authors of DUSt3R and MonST3R for their foundational work in stereo matching and 3D reconstruction. We also thank the contributors of PointOdyssey, TUM-Dynamics, and DAVIS datasets for enabling comprehensive evaluation.
+We would like to thank the authors of DUSt3R and MonST3R for their foundational work in stereo matching and 3D reconstruction. We also thank the contributors of PointOdyssey, TUM-Dynamics, Dynamic Replica, TAPVid-3D and DAVIS datasets for enabling comprehensive evaluation.
 
 This work was supported by UC Berkeley and the Max Planck Institute for Intelligent Systems.
