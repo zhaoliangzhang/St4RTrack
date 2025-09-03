@@ -1,0 +1,7 @@
+click
+opencv-python
+scipy
+matplotlib
+trimesh
+pillow
+huggingface_hub
