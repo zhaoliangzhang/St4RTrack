@@ -20,3 +20,5 @@ h5py
 gdown
 boto3
 viser
+pyro-ppl
+mediapy

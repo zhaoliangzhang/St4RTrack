@@ -18,7 +18,6 @@ import dust3r.utils.path_to_croco  # noqa: F401
 from models.croco import CroCoNet  # noqa
 from models.blocks import Attention as FastAttention
 from models.pos_embed import get_2d_sincos_pos_embed, RoPE2D
-from x_transformers import FeedForward, Attention
 import math
 
 inf = float('inf')
