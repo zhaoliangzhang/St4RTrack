@@ -264,6 +264,7 @@ def train(args):
     if args.wandb and misc.is_main_process():
         wandb.init(name=args.output_dir.split('/')[-1], 
                    project='st4rtrack', 
+                   entity='zhaoliangzhang',
                    config=args, 
                    sync_tensorboard=True,
                    dir=args.output_dir)
@@ -298,6 +299,10 @@ def train(args):
     if args.train_dataset is None:
         data_loader_train = None
     else:
+        print('Building train dataset {}'.format(args.train_dataset))
+        print('Batch size: {}'.format(args.batch_size))
+        print('Number of workers: {}'.format(args.num_workers))
+        print('Test: {}'.format(False))
         data_loader_train = build_dataset(args.train_dataset, args.batch_size, args.num_workers, test=False)
 
     # testing dataset and loader
@@ -504,7 +509,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
     for data_iter_step, batch in enumerate(metric_logger.log_every(data_loader, args.print_freq, header)):
         epoch_f = epoch + data_iter_step / len(data_loader)
-
+        print('Batch: {}'.format(batch[0]['img'].shape))    
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
             misc.adjust_learning_rate(optimizer, epoch_f, args)

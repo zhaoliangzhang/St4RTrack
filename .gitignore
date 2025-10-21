@@ -1,0 +1,8 @@
+*__pycache__*
+test_data*
+inference_results*
+ckpt/
+point_odyssey
+robots/
+outputs/
+analyze_checkpoint.py

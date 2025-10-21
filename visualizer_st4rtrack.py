@@ -11,6 +11,7 @@ python visualizer_st4rtrack.py --num_traj_points 500 --max_frames 128 --point_si
 
 import time
 from pathlib import Path
+from typing import Optional
 
 import numpy as onp
 import tyro
@@ -47,19 +48,23 @@ def visualize_st4rtrack(
     traj_start_frame: int = 0,
     traj_line_width: float = 3.,
     fixed_length_traj: int = 10,
-    server: viser.ViserServer = None,
+    server: Optional[viser.ViserServer] = None,
     use_float16: bool = True,
-    preloaded_data: dict = None,
+    preloaded_data: Optional[dict] = None,
     color_code: str = "jet",
     blue_rgb: tuple[float, float, float] = (0.0, 0.149, 0.463),
     red_rgb: tuple[float, float, float] = (0.769, 0.510, 0.055),
     blend_ratio: float = 0.7,
-    mask_folder: str = None,
+    mask_folder: Optional[str] = None,
+    port: Optional[int] = None,
 ) -> None:
     log_memory_usage("at start of visualization")
     
     if server is None:
-        server = viser.ViserServer()
+        if port is not None:
+            server = viser.ViserServer(port=port)
+        else:
+            server = viser.ViserServer()
     if share:
         server.request_share_url()
 

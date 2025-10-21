@@ -667,8 +667,10 @@ class ConfLoss(MultiLoss):
             assert self.traj_weight != 0 or self.align3d_weight != 0, 'cotracker is only used for traj_weight or align3d_weight'
 
             video = gt2['img_org'].unsqueeze(0) * 255
+            print('video', video.shape)
             with torch.no_grad():
                 pred_tracks, pred_visibility = self.cotracker(video, grid_size = self.grid_size + torch.randint(-8, 8, (1,)).item()) # 1, B, N, 2; 1, B, N
+                print('pred_tracks', pred_tracks.shape)
             pred_tracks = pred_tracks[0] # B, N, 2
 
             # get the valid points in the first frame

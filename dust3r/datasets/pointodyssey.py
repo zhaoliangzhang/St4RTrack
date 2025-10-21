@@ -397,5 +397,6 @@ class PointOdysseyDUSt3R(BaseStereoViewDataset):
                 views2['supervised_label'][save_idx] = supervised_label
                 views2['pts3d'][save_idx] = torch.from_numpy(pts3d)
                 views2['valid_mask'][save_idx] = torch.from_numpy(valid_mask) & torch.from_numpy(np.isfinite(pts3d).all(axis=-1))
-
+        # print(f'In po dataset, views1 image shape: {views1["img"].shape}')
+        # print(f'In po dataset, views2 image shape: {views2["img"].shape}')
         return [views1, views2]

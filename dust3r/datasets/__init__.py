@@ -22,6 +22,7 @@ except:
 from .megasam_delta import MegasamDeltaDUSt3R  # noqa
 from .kubrick import KubrickDUSt3R  # noqa
 from .custom import CustomDUSt3R  # noqa
+from .robot import RobotDUSt3R  # noqa
 
 def get_data_loader(dataset, batch_size, num_workers=8, shuffle=True, drop_last=True, pin_mem=True):
     import torch
@@ -39,7 +40,7 @@ def get_data_loader(dataset, batch_size, num_workers=8, shuffle=True, drop_last=
 
     except (NotImplementedError) as e:
         # Print the exception message
-        print(f"rank {rank} Exception occurred -------- : {e} for sampler for dataset {dataset}", force=True)
+        print(f"rank {rank} Exception occurred -------- : {e} for sampler for dataset {dataset}")
         # not avail for this dataset
         if torch.distributed.is_initialized():
             sampler = torch.utils.data.DistributedSampler(

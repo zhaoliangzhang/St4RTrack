@@ -2,7 +2,7 @@
 # Licensed under CC BY-NC-SA 4.0 (non-commercial use only).
 #
 # --------------------------------------------------------
-# DUSt3R model class
+# DUSt3R model class for Robot Jacobian Field input
 # --------------------------------------------------------
 from copy import deepcopy
 import torch
@@ -26,7 +26,6 @@ hf_version_number = huggingface_hub.__version__
 assert version.parse(hf_version_number) >= version.parse("0.22.0"), "Outdated huggingface_hub version, please reinstall requirements.txt"
 
 def load_model(model_path, device, verbose=False):
-
     if verbose:
         print('... loading model from', model_path)
     ckpt = torch.load(model_path, map_location='cpu', weights_only=False)
@@ -45,21 +44,27 @@ def load_model(model_path, device, verbose=False):
         print(s)
     return net.to(device)
 
-class AsymmetricCroCo3DStereo (
+
+class AsymmetricCroCo3DStereoJacobian(
     CroCoNet,
     huggingface_hub.PyTorchModelHubMixin,
     library_name="dust3r",
     repo_url="https://github.com/naver/dust3r",
-    tags=["image-to-3d"],
+    tags=["image-to-3d", "robot", "jacobian"],
 ):
-    """ Two siamese encoders, followed by two decoders.
-    The goal is to output 3d points directly, both images in view1's frame
-    (hence the asymmetry).   
+    """DUSt3R model for robot Jacobian field prediction.
+    
+    This model takes:
+    - Image from views1 (reference frame) - goes to both encoders
+    
+    The model processes the same image through both encoders. The first head 
+    outputs a Jacobian field that maps joint actions to RGB changes.
+    The second head outputs 3D points for consistency.
     """
 
     def __init__(self,
-                 output_mode='pts3d',
-                 head_type1='dpt',
+                 output_mode='jacobian',
+                 head_type1='jacobian',
                  head1_pretrained_path=None,
                  head_type='linear',
                  depth_mode=('exp', -inf, inf),
@@ -68,9 +73,10 @@ class AsymmetricCroCo3DStereo (
                  random_init='none',
                  random_init_lr_scale=1.0,
                  landscape_only=True,
-                 patch_embed_cls='PatchEmbedDust3R',  # PatchEmbedDust3R or ManyAR_PatchEmbed
-                 arch_mode = 'VanillaDust3r',
-                 rope_mode = 'full_3d', #full_3d, mix_3d
+                 patch_embed_cls='PatchEmbedDust3R',
+                 arch_mode='VanillaDust3r',
+                 rope_mode='full_3d',
+                 action_dim=8,  # Robot action dimension
                  **croco_kwargs):
         
         croco_kwargs['arch_mode'] = arch_mode
@@ -79,28 +85,32 @@ class AsymmetricCroCo3DStereo (
         self.croco_args = fill_default_args(croco_kwargs, super().__init__)
         super().__init__(**croco_kwargs)
 
-        # dust3r specific initialization
+        # Robot-specific initialization
         self.arch_mode = arch_mode
         self.random_init_lr_scale = random_init_lr_scale
+        self.action_dim = action_dim
+        
+        # Create second decoder (for action processing)
         self.dec_blocks2 = deepcopy(self.dec_blocks)
         self.head1_pretrained_path = head1_pretrained_path
+        
+        # Set up heads
         self.set_downstream_head(output_mode, head_type, landscape_only, depth_mode, conf_mode, head_type1, **croco_kwargs)
         self.set_freeze(freeze)
         self.set_random_init(random_init)
-
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kw):
         if os.path.isfile(pretrained_model_name_or_path):
             return load_model(pretrained_model_name_or_path, device='cpu')
         else:
-            return super(AsymmetricCroCo3DStereo, cls).from_pretrained(pretrained_model_name_or_path, **kw)
+            return super(AsymmetricCroCo3DStereoJacobian, cls).from_pretrained(pretrained_model_name_or_path, **kw)
 
     def _set_patch_embed(self, img_size=224, patch_size=16, enc_embed_dim=768):
         self.patch_embed = get_patch_embed(self.patch_embed_cls, img_size, patch_size, enc_embed_dim)
 
     def load_state_dict(self, ckpt, **kw):
-        # duplicate all weights for the second decoder if not present
+        # Handle loading from standard DUSt3R checkpoints
         new_ckpt = dict(ckpt)
         if not any(k.startswith('dec_blocks2') for k in ckpt):
             for key, value in ckpt.items():
@@ -108,7 +118,7 @@ class AsymmetricCroCo3DStereo (
                     new_ckpt[key.replace('dec_blocks', 'dec_blocks2')] = value
         return super().load_state_dict(new_ckpt, **kw)
 
-    def set_freeze(self, freeze):  # this is for use by downstream models
+    def set_freeze(self, freeze):
         self.freeze = freeze
         to_be_frozen = {
             'none':     [],
@@ -129,27 +139,21 @@ class AsymmetricCroCo3DStereo (
         
         def init_weights(m):
             if isinstance(m, (torch.nn.Linear, torch.nn.Conv2d)):
-                # Use Kaiming initialization for linear and conv layers
                 torch.nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
                 if m.bias is not None:
                     torch.nn.init.constant_(m.bias, 0)
-                # Set scaled learning rate for randomly initialized parameters
                 m.weight.lr_scale = self.random_init_lr_scale
                 if m.bias is not None:
                     m.bias.lr_scale = self.random_init_lr_scale
             elif isinstance(m, (torch.nn.BatchNorm2d, torch.nn.LayerNorm)):
-                # Initialize normalization layers
                 torch.nn.init.constant_(m.weight, 1)
                 torch.nn.init.constant_(m.bias, 0)
-                # Set scaled learning rate for randomly initialized parameters
                 m.weight.lr_scale = self.random_init_lr_scale
                 m.bias.lr_scale = self.random_init_lr_scale
             elif isinstance(m, nn.ConvTranspose2d):
-                # set uniform initialization for conv transpose layers
                 torch.nn.init.uniform_(m.weight, -0.02, 0.02)
                 if m.bias is not None:
                     torch.nn.init.uniform_(m.bias, -0.02, 0.02)
-
                 m.weight.lr_scale = self.random_init_lr_scale
                 if m.bias is not None:
                     m.bias.lr_scale = self.random_init_lr_scale
@@ -158,11 +162,10 @@ class AsymmetricCroCo3DStereo (
             module.apply(init_weights)
 
     def _set_prediction_head(self, *args, **kwargs):
-        """ No prediction head """
+        """No prediction head"""
         return
 
-    def set_downstream_head(self, output_mode, head_type, landscape_only, depth_mode, conf_mode, head_type1, patch_size, img_size,
-                            **kw):
+    def set_downstream_head(self, output_mode, head_type, landscape_only, depth_mode, conf_mode, head_type1, patch_size, img_size, **kw):
         if type(img_size) is int:
             img_size = (img_size, img_size)
         assert img_size[0] % patch_size == 0 and img_size[1] % patch_size == 0, \
@@ -172,23 +175,22 @@ class AsymmetricCroCo3DStereo (
         self.head_type = head_type
         self.depth_mode = depth_mode
         self.conf_mode = conf_mode
-        # allocate heads
-    
-        self.downstream_head1 = head_factory(head_type1, output_mode, self, has_conf=bool(conf_mode))
+        
+        # Allocate heads - pass joint_dim for Jacobian head
+        self.downstream_head1 = head_factory(head_type1, output_mode, self, has_conf=bool(conf_mode), joint_dim=self.action_dim)
         if self.head1_pretrained_path:
             self.downstream_head1.load_state_dict(torch.load(self.head1_pretrained_path, weights_only=False), strict=False)
-        self.downstream_head2 = head_factory(head_type, output_mode, self, has_conf=bool(conf_mode))
-        # magic wrapper
+        self.downstream_head2 = head_factory(head_type, 'pts3d', self, has_conf=bool(conf_mode))
+        
+        # Magic wrapper
         self.head1 = transpose_to_landscape(self.downstream_head1, activate=landscape_only)
         self.head2 = transpose_to_landscape(self.downstream_head2, activate=landscape_only)
 
     def _encode_image(self, image, true_shape, mask=None, seq_id=None):
-        # embed the image into patches  (x has size B x Npatches x C)
-    
+        """Encode image using standard patch embedding"""
         x, pos3d = self.patch_embed(image, true_shape=true_shape, seq_id=seq_id)
-
         pos = pos3d[:,:,1:] 
-        B,N,C = x.size()
+        B, N, C = x.size()
         if mask is not None:
             assert mask.shape[1] * mask.shape[2] == N
             mask = mask.view(B, -1)
@@ -196,74 +198,63 @@ class AsymmetricCroCo3DStereo (
             posvis = pos[mask].view(B, -1, 2)
         else:
             posvis = pos
-        # add positional embedding without cls token
-        assert self.enc_pos_embed is None
-        print("before encoder", x.shape, pos.shape, pos3d.shape)
-
-        # now apply the transformer encoder and normalization
+        
+        # Apply transformer encoder
         for blk in self.enc_blocks:
             x = blk(x, posvis)
-
         x = self.enc_norm(x)
         return x, pos, None, pos3d
 
-    def _encode_image_pairs(self, img1, img2, true_shape1, true_shape2, mask1=None, mask2=None):
-        if img1.shape[-2:] == img2.shape[-2:] and (mask1 is None) and (mask2 is None):
-            print('1111111', true_shape1.shape)
-            out, pos, _, pos3d = self._encode_image(torch.cat((img1, img2), dim=0),
-                                             torch.cat((true_shape1, true_shape2), dim=0))
-            out, out2 = out.chunk(2, dim=0)
-            pos, pos2 = pos.chunk(2, dim=0)
-            pos3d1, pos3d2 = pos3d.chunk(2, dim=0)
-            print('out', out.shape)
-            print('out2', out2.shape)
-            print('pos', pos.shape)
-            print('pos2', pos2.shape)
-            print('pos3d1', pos3d1.shape)
-            print('pos3d2', pos3d2.shape)
-        else:
-            out, pos, _, pos3d1 = self._encode_image(img1, true_shape1, mask=mask1)
-            out2, pos2, _, pos3d2 = self._encode_image(img2, true_shape2, mask=mask2)
-        return out, out2, pos, pos2, pos3d1, pos3d2
 
-    def _encode_image_sequence(self, imgs, true_shapes, mask=None):
-        if len(imgs) == 0:
-            return [], [], []
-            
-        if all(img.shape[-2:] == imgs[0].shape[-2:] for img in imgs) and mask is None:
-            # If all images have same shape and no masks, batch them together
-            stacked_imgs = torch.cat(imgs, dim=0)
-            stacked_shapes = torch.cat(true_shapes, dim=0)  
-            out, pos, _, pos3d = self._encode_image(stacked_imgs, stacked_shapes)
-            # Split back into individual tensors
-            outs = list(out.chunk(len(imgs), dim=0))
-            poses = list(pos.chunk(len(imgs), dim=0))
-            pos3ds = list(pos3d.chunk(len(imgs), dim=0))
-        else:
-            # Encode each image separately if shapes differ or have masks
-            outs = []
-            poses = []
-            for img, true_shape in zip(imgs, true_shapes):
-                out, pos, _ = self._encode_image(img, true_shape, mask=mask)
-                outs.append(out)
-                poses.append(pos)
-                
-        return outs, poses, None
-
-    def _encode_symmetrized(self, view1, view2):
-    
-        img1 = view1['img']
-        img2 = view2['img']
+    def _encode_jacobian_inputs(self, view1, view2):
+        """Encode inputs for Jacobian model: image goes to both encoders"""
+        # Extract images from view1 (contains [img0, img1])
+        img = view1['img']
         
-        B = img1.shape[0]  
-        # Recover true_shape when available, otherwise assume that the img shape is the true one
-        # Remove the extra dimension from shape tensors
-        shape1 = view1.get('true_shape', torch.tensor(img1.shape[-2:])[None].repeat(B, 1)).squeeze(1)  # [B, 2]
-        shape2 = view2.get('true_shape', torch.tensor(img2.shape[-2:])[None].repeat(B, 1)).squeeze(1)  # [B, 2]
+        # Check if we have [B, S, C, H, W] format and reshape to [B*S, C, H, W]
+        if img.ndim == 5:  # [B, S, C, H, W]
+            B, S = img.shape[:2]
+            img = img.view(B * S, *img.shape[2:])  # [B*S, C, H, W]
+            
+            # Adjust true_shape accordingly
+            if 'true_shape' in view1:
+                true_shape = view1['true_shape']  # [B, S, 2] or [B, 2]
+                if true_shape.ndim == 3:  # [B, S, 2]
+                    true_shape = true_shape.view(B * S, 2)  # [B*S, 2]
+                else:  # [B, 2]
+                    true_shape = true_shape.repeat_interleave(S, dim=0)  # [B*S, 2]
+                shape1 = true_shape
+            else:
+                shape1 = torch.tensor(img.shape[-2:])[None].repeat(B * S, 1)  # [B*S, 2]
+        else:  # Standard [B, C, H, W] format
+            batch_size = img.shape[0]
+            # Get true shapes
+            shape1 = view1.get('true_shape', torch.tensor(img.shape[-2:])[None].repeat(batch_size, 1))
+            if shape1.ndim == 2 and shape1.shape[0] == 1:
+                shape1 = shape1.squeeze(0).repeat(batch_size, 1)
+        
+        # Encode images through first encoder (for Jacobian field prediction)
+        img_feat1, img_pos1, _, img_pos3d1 = self._encode_image(img, shape1)
+        
+        # Encode images through second encoder (for 3D point prediction)
+        img_feat2, img_pos2, _, img_pos3d2 = self._encode_image(img, shape1)
+        
+        # For Jacobian model, we use image features for both encoders
+        feat1 = img_feat1   # Image features for Jacobian head
+        feat2 = img_feat2   # Image features for 3D point head
+        pos1 = img_pos1     # Image positions
+        pos2 = img_pos2     # Image positions
+        pos3d1 = img_pos3d1 # Image 3D positions
+        pos3d2 = img_pos3d2 # Image 3D positions
 
-        feat1, feat2, pos1, pos2, pos3d1, pos3d2 = self._encode_image_pairs(img1, img2, shape1, shape2)
+        # Return in the same format as _encode_image_pairs
+        return (shape1, shape1), (feat1, feat2), (pos1, pos2), (pos3d1, pos3d2)
 
-        return (shape1, shape2), (feat1, feat2), (pos1, pos2), (pos3d1, pos3d2)
+    def _downstream_head(self, head_num, decout, img_shape):
+        """Apply downstream head"""
+        B, S, D = decout[-1].shape
+        head = getattr(self, f'head{head_num}')
+        return head(decout, img_shape)
 
     def _decoder_pre(self, f1, pos1, f2, pos2, pos3d1, pos3d2):
         final_output = [(f1, f2)]  # before projection
@@ -293,6 +284,7 @@ class AsymmetricCroCo3DStereo (
 
         # normalize last output
         del final_output[1]
+        
         final_output[-1] = tuple(map(self.dec_norm, final_output[-1]))
         return zip(*final_output)
 
@@ -301,23 +293,19 @@ class AsymmetricCroCo3DStereo (
         f1, f2, pos1, pos2, pos3d1, pos3d2, original_output = self._decoder_pre(f1, pos1, f2, pos2, pos3d1, pos3d2)
         return self._decoder_post(f1, f2, pos1, pos2, pos3d1, pos3d2, original_output)
 
-    def _downstream_head(self, head_num, decout, img_shape):
-        B, S, D = decout[-1].shape
-        head = getattr(self, f'head{head_num}')
-        return head(decout, img_shape)
-
     def forward(self, view1, view2):
-        # encode the two images --> B,S,D
-        (shape1, shape2), (feat1, feat2), (pos1, pos2), (pos3d1, pos3d2) = self._encode_symmetrized(view1, view2)
+        """Forward pass for robot Jacobian field prediction"""
+        # Encode inputs: image goes to both encoders, action goes to one encoder
+        (shape1, shape2), (feat1, feat2), (pos1, pos2), (pos3d1, pos3d2) = self._encode_jacobian_inputs(view1, view2)
+        
+        # Decode using standard decoder
         dec1, dec2 = self._decoder(feat1, pos1, feat2, pos2, pos3d1, pos3d2)
-        # print('dec1', dec1.shape)
-        # print('dec2', dec2.shape)
 
+        # Apply heads
         with torch.cuda.amp.autocast(enabled=False):
-            res1 = self._downstream_head(1, [tok.float() for tok in dec1], shape1)
-            res2 = self._downstream_head(2, [tok.float() for tok in dec2], shape2)
-            # print('res1', res1.shape)
-            # print('res2', res2.shape)
+            res1 = self._downstream_head(1, [tok.float() for tok in dec1], shape1)  # Jacobian field
+            res2 = self._downstream_head(2, [tok.float() for tok in dec2], shape2)  # 3D points
     
-        res2['pts3d_in_other_view'] = res2.pop('pts3d')  # predict view2's pts3d in view1's frame
+        # Rename output for consistency
+        res2['pts3d_in_other_view'] = res2.pop('pts3d')
         return res1, res2
